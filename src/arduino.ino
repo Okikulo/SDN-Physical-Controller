@@ -6,14 +6,20 @@
  * - Button: Pin 2
  * - Joystick VRx: Pin A0
  * - Joystick VRy: Pin A1
- * - LED h1: Pin 5 (un solo LED)
- * - LED h2: Pin 6 (un solo LED)
- * - LED3 (RGB - switch): Pins 8(R), 9(G), 10(B)
+ * - Joystick SW: Pin 4
+ * - Temperature Sensor (DS18B20): Pin 7
+ * - LED h1: Pin 5 (single LED)
+ * - LED h2: Pin 6 (single LED)
+ * - LED3 (RGB - switch): Pins 11(R), 9(G), 10(B)
  */
+
+#include <DallasTemperature.h>
+#include <OneWire.h>
 
 // ============ PIN DEFINITIONS ============
 const int BUTTON1_PIN = 2;
 const int JOY_SW_PIN = 4;
+const int TEMP_PIN = 7; // DS18B20 data pin
 
 const int JOY_X_PIN = A0;
 const int JOY_Y_PIN = A1;
@@ -27,10 +33,14 @@ const int LED3_RED = 11;
 const int LED3_GREEN = 9;
 const int LED3_BLUE = 10;
 
+// ============ DS18B20 SETUP ============
+OneWire oneWire(TEMP_PIN);
+DallasTemperature sensors(&oneWire);
+
 // ============ STATE VARIABLES ============
 int lastButton1 = HIGH;
-int lastJoyState = 0;           // 0=center, 1=up, 2=down, 3=left, 4=right
-unsigned long lastTempRead = 0; // ADD THIS LINE
+int lastJoyState = 0; // 0=center, 1=up, 2=down, 3=left, 4=right
+unsigned long lastTempRead = 0;
 unsigned long debounceDelay = 50;
 
 // Joystick thresholds
@@ -42,6 +52,7 @@ void setup() {
   Serial.begin(9600);
 
   pinMode(BUTTON1_PIN, INPUT_PULLUP);
+  pinMode(JOY_SW_PIN, INPUT_PULLUP);
 
   // LEDs simples
   pinMode(LED_H1, OUTPUT);
@@ -52,6 +63,9 @@ void setup() {
   pinMode(LED3_GREEN, OUTPUT);
   pinMode(LED3_BLUE, OUTPUT);
 
+  // Initialize DS18B20
+  sensors.begin();
+
   // Inicializar LEDs
   // h1 y h2 ON (conectados)
   digitalWrite(LED_H1, HIGH);
@@ -60,8 +74,6 @@ void setup() {
   // Switch verde (normal)
   setLED3(0, 255, 0);
 
-  pinMode(JOY_SW_PIN, INPUT_PULLUP);
-
   Serial.println("READY");
 }
 
@@ -69,7 +81,7 @@ void setup() {
 void loop() {
   readButton();
   readJoystick();
-  readTemperature(); // Uncomment this
+  readTemperature();
   readCommands();
   delay(10);
 }
@@ -77,11 +89,14 @@ void loop() {
 // ============ READ FUNCTIONS ============
 void readTemperature() {
   if (millis() - lastTempRead > 2000) {
-    // Simulated temperature between 23-27°C
-    float tempC = 25.0 + random(-200, 200) / 100.0;
+    sensors.requestTemperatures();
+    float tempC = sensors.getTempCByIndex(0);
 
-    Serial.print("TEMP:");
-    Serial.println(tempC);
+    // Check if reading is valid
+    if (tempC != DEVICE_DISCONNECTED_C) {
+      Serial.print("TEMP:");
+      Serial.println(tempC, 1);
+    }
 
     lastTempRead = millis();
   }
@@ -137,19 +152,15 @@ void readCommands() {
 
     // Comandos para LED h1 (pin 5)
     if (cmd == "LED1:RED") {
-      // Rojo = desconectado = LED OFF (o parpadeo)
       digitalWrite(LED_H1, LOW);
     } else if (cmd == "LED1:GREEN") {
-      // Verde = conectado = LED ON
       digitalWrite(LED_H1, HIGH);
     }
 
     // Comandos para LED h2 (pin 6)
     else if (cmd == "LED2:RED") {
-      // Rojo = desconectado = LED OFF
       digitalWrite(LED_H2, LOW);
     } else if (cmd == "LED2:GREEN") {
-      // Verde = conectado = LED ON
       digitalWrite(LED_H2, HIGH);
     }
 
@@ -167,8 +178,6 @@ void readCommands() {
 // ============ LED CONTROL FUNCTIONS ============
 
 void setLED3(int r, int g, int b) {
-  // LED3 es RGB (todos los colores)
-  // Reducir brillo para no quemar
   int adjustedR = r * 0.3;
   int adjustedG = g * 0.5;
   int adjustedB = b * 0.5;
